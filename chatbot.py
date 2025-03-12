@@ -25,8 +25,8 @@ client = InferenceClient(
 
 # Load summarization model and tokenizer
 model_path = "Jurisight/legal_led"
-model = AutoModelForSeq2SeqLM.from_pretrained(model_path)
-tokenizer = AutoTokenizer.from_pretrained(model_path)
+model = AutoModelForSeq2SeqLM.from_pretrained(model_path,use_auth_token=os.getenv("HF_API_KEY"))
+tokenizer = AutoTokenizer.from_pretrained(model_path,use_auth_token=os.getenv("HF_API_KEY"))
 
 # Configure LlamaIndex settings
 Settings.embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-base-en-v1.5")
