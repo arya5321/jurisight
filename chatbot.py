@@ -13,8 +13,14 @@ from dotenv import load_dotenv
 from huggingface_hub import InferenceClient
 import re, torch, jwt, os, json, gc
 
+# Load environment variables
 load_dotenv()
 
+# Flask app setup
+app = Flask(__name__)
+CORS(app)
+
+# Secret key for JWT
 SECRET_KEY = os.getenv("SECRET_KEY")
 
 # Initialize Hugging Face Inference Client for embeddings
@@ -23,10 +29,23 @@ client = InferenceClient(
     api_key=os.getenv("HF_API_KEY")  # Add your Hugging Face API key to .env
 )
 
-# Load summarization model and tokenizer
-model_path = "Jurisight/legal_led"
-model = AutoModelForSeq2SeqLM.from_pretrained(model_path,use_auth_token=os.getenv("HF_API_KEY"))
-tokenizer = AutoTokenizer.from_pretrained(model_path,use_auth_token=os.getenv("HF_API_KEY"))
+# Load and quantize the summarization model
+def load_quantized_model():
+    model_path = "Jurisight/legal_led"
+    tokenizer = AutoTokenizer.from_pretrained(model_path, use_auth_token=os.getenv("HF_API_KEY"))
+    
+    # Load the model
+    model = AutoModelForSeq2SeqLM.from_pretrained(model_path, use_auth_token=os.getenv("HF_API_KEY"))
+    
+    # Quantize the model (dynamic quantization)
+    quantized_model = torch.quantization.quantize_dynamic(
+        model, {torch.nn.Linear}, dtype=torch.qint8
+    )
+    
+    return quantized_model, tokenizer
+
+# Load the quantized model and tokenizer
+quantized_model, tokenizer = load_quantized_model()
 
 # Configure LlamaIndex settings
 Settings.embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-base-en-v1.5")
@@ -36,9 +55,6 @@ Settings.llm = Groq(model="llama3-8b-8192", api_key=os.getenv("GROQ_API_KEY"))
 pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
 pinecone_index_chat = "llamaindex"
 pinecone_index_retrieval = "judgment-search"
-
-app = Flask(__name__)
-CORS(app)
 
 # Authentication decorator
 def authenticate_user(f):
@@ -165,7 +181,7 @@ def summarize(user_id):
                     truncation=True,
                     return_tensors="pt"
                 )
-                summary_ids = model.generate(
+                summary_ids = quantized_model.generate(
                     inputs["input_ids"],
                     num_beams=4,
                     max_length=max_output_length,
